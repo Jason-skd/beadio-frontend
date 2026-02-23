@@ -30,6 +30,15 @@ Hot reload is enabled via the `composeHotReload` plugin.
 - **kotlinx-coroutines-swing** for Swing dispatcher integration
 - Target: Desktop JVM only (no Android/iOS)
 
+## UI Design
+
+**macOS Native Style**: The UI should mimic macOS native application appearance. Use:
+- System fonts (San Francisco via system default)
+- Native-like window chrome and title bar
+- macOS-style navigation (sidebar, toolbar)
+- Cupertino-like components where appropriate
+- System colors that adapt to light/dark mode
+
 ## Project Structure
 
 Single module: `composeApp/`
@@ -100,6 +109,53 @@ Each module (Session, Plan, Investigation, Execution) has three response variant
 
 **Execution**: `ALL_VIDEOS_FINISHED` (409), `MANAGER_ALREADY_EXISTS` (409), `MANAGER_NOT_FOUND` (404), `PLAN_SAVE_FAILED` (500), `SITE_EXECUTION_FAILED` (500), `INVALID_STATE` (409), `SESSIONS_NOT_READY` (409), `PLAN_NOT_FOUND` (404)
 
+## Frontend Features (Total Task)
+
+The frontend has **3 user-triggered features** and **2 automatic sub-flows**.
+
+### User-Triggered Features
+
+#### 1. 创建计划 (Create Plan)
+
+Multi-step wizard:
+1. User selects sites to include (`GET /sites`)
+2. `POST /plans/new` → create plan manager
+3. `POST /plans/new/courses` → start course collection
+4. Poll `GET /plans/new` until `AwaitingCourseSelection` (data contains course lists per site)
+5. User selects courses from the list
+6. `POST /plans/new/videos` → fetch videos for selected courses
+7. Poll `GET /plans/new` until `AwaitingPlanSave`
+8. User inputs plan name → `PUT /plans/new` to save
+
+#### 2. 执行播放 (Execute Plan)
+
+User selects a saved plan, then the frontend automatically orchestrates:
+1. `POST /investigation` to start video metadata collection
+   - If `ALL_VIDEOS_COLLECTED` (409), skip investigation
+2. `POST /execution` to start playback
+3. **Poll both** `GET /investigation` and `GET /execution` concurrently
+   - Show investigation progress until it completes, then stop its polling
+   - Show execution progress (plan/site/video level) until completion
+
+#### 3. 管理已保存计划 (Manage Saved Plans)
+
+- List all saved plans (`GET /plans`)
+- Delete a plan (`DELETE /plans` with body `{ "planName": "..." }`)
+
+### Automatic Sub-Flows (not user-triggered)
+
+#### Session Creation
+
+When any feature receives `SESSIONS_NOT_READY` error:
+1. Extract the list of unready sites from the error's `data` field
+2. `POST /sessions/{site}` for each unready site
+3. Poll `GET /sessions/{site}` until all sessions reach `Ready`
+4. Retry the original operation
+
+#### Investigation (Video Metadata Collection)
+
+Automatically triggered by "Execute Plan" (feature 2). Not a standalone user action. If investigation is still in progress when execution starts, both are polled concurrently.
+
 ### Execution Progress Data Structure
 
 ```json
@@ -113,3 +169,26 @@ Each module (Session, Plan, Investigation, Execution) has three response variant
   }
 }
 ```
+
+## Backend Lifecycle Management
+
+The frontend must control the backend's lifecycle synchronously.
+
+### Startup Sequence
+
+1. Show a splash/loading screen while waiting for backend to become ready
+2. Poll `http://localhost:8080/` or `GET /sites` until backend responds successfully
+3. Only proceed to the main UI after backend is ready
+
+### Shutdown Sequence
+
+1. When frontend receives close request (user clicks close button or window closes)
+2. **Immediately close the GUI/window** (hide the compose window)
+3. In the background, send `POST http://localhost:8080/break` to gracefully shutdown backend
+4. Wait for the response from `/break` endpoint
+5. After receiving response (or timeout), fully exit the frontend process
+
+The `/break` endpoint:
+- Returns HTTP 200 with JSON `{"type":"Success","message":"服务已关闭"}`
+- Closes all Playwright browser resources and managers
+- Then terminates the JVM process
