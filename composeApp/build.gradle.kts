@@ -52,6 +52,7 @@ kotlin {
             implementation(compose.desktop.currentOs)
             implementation(libs.coroutines.swing)
             implementation(libs.ktor.client.cio)
+            implementation("com.github.jasonskd.beadio_backend:beadio_backend:0.0.1")
 
             // Logging
             implementation(libs.bundles.logging)

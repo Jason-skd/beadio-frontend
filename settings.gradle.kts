@@ -33,3 +33,9 @@ plugins {
 }
 
 include(":composeApp")
+
+includeBuild("/Users/skd/IdeaProjects/beadio_backend") {
+    dependencySubstitution {
+        substitute(module("com.github.jasonskd.beadio_backend:beadio_backend")).using(project(":"))
+    }
+}
