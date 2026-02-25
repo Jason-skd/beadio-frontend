@@ -34,7 +34,10 @@ data class ExecutePlanUiState(
     val plans: List<String> = emptyList(),
     val selectedPlan: String? = null,
     val phase: ExecutePhase = ExecutePhase.LoadingPlans
-)
+) {
+    val isExecuting: Boolean
+        get() = phase is ExecutePhase.Investigating || phase is ExecutePhase.Executing
+}
 
 class ExecutePlanViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(ExecutePlanUiState())
@@ -62,10 +65,12 @@ class ExecutePlanViewModel : ViewModel() {
     }
 
     fun selectPlan(planName: String) {
+        if (_uiState.value.isExecuting) return
         _uiState.update { it.copy(selectedPlan = planName, phase = ExecutePhase.Idle) }
     }
 
     fun deletePlan(planName: String) {
+        if (_uiState.value.isExecuting) return
         viewModelScope.launch {
             try {
                 BeadioClient.deletePlan(planName)
@@ -202,11 +207,19 @@ class ExecutePlanViewModel : ViewModel() {
         executionJob?.cancel()
         executionJob = null
         _uiState.update { it.copy(phase = ExecutePhase.Idle) }
+        viewModelScope.launch {
+            try { BeadioClient.deleteExecution() } catch (_: Exception) {}
+            try { BeadioClient.deleteInvestigation() } catch (_: Exception) {}
+        }
     }
 
     fun reset() {
         executionJob?.cancel()
         executionJob = null
         _uiState.update { it.copy(phase = ExecutePhase.Idle, selectedPlan = null) }
+        viewModelScope.launch {
+            try { BeadioClient.deleteExecution() } catch (_: Exception) {}
+            try { BeadioClient.deleteInvestigation() } catch (_: Exception) {}
+        }
     }
 }

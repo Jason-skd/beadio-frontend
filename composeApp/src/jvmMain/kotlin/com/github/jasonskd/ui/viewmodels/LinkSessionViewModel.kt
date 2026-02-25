@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.github.jasonskd.BeadioClient
 import domain.SupportedSite
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +23,7 @@ data class SessionSiteUiState(
 
 data class LinkSessionUiState(
     val sessions: List<SessionSiteUiState> = SupportedSite.entries().map { SessionSiteUiState(it) },
+    val requiredSites: Set<SupportedSite> = emptySet(),
     val allSessionsReady: Boolean = false
 )
 
@@ -29,14 +31,18 @@ class LinkSessionViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(LinkSessionUiState())
     val uiState: StateFlow<LinkSessionUiState> = _uiState.asStateFlow()
 
+    private val siteJobs = mutableMapOf<SupportedSite, Job>()
+
     fun startSessionsFor(siteNames: List<String>) {
         _uiState.update { it.copy(allSessionsReady = false) }
         val sites = siteNames.mapNotNull { SupportedSite.fromName(it) }
+        _uiState.update { it.copy(requiredSites = sites.toSet()) }
         sites.forEach { site -> connectSession(site) }
     }
 
     fun connectSession(site: SupportedSite) {
-        viewModelScope.launch {
+        siteJobs[site]?.cancel()
+        siteJobs[site] = viewModelScope.launch {
             updateSiteStatus(site, SessionStatus.Connecting, "连接中...")
             try {
                 val resp = BeadioClient.createSession(site.name)
@@ -106,7 +112,11 @@ class LinkSessionViewModel : ViewModel() {
     }
 
     private fun checkAllReady() {
-        val allReady = _uiState.value.sessions.all { it.status == SessionStatus.Ready }
+        val required = _uiState.value.requiredSites
+        if (required.isEmpty()) return
+        val allReady = _uiState.value.sessions
+            .filter { it.site in required }
+            .all { it.status == SessionStatus.Ready }
         if (allReady) {
             _uiState.update { it.copy(allSessionsReady = true) }
         }

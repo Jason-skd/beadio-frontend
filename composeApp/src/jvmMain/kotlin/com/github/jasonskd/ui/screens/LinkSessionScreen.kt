@@ -55,18 +55,6 @@ fun LinkSessionScreen(viewModel: LinkSessionViewModel) {
             )
         }
 
-        Spacer(modifier = Modifier.weight(1f))
-
-        val anyActiveSession = uiState.sessions.any {
-            it.status == SessionStatus.Ready || it.status == SessionStatus.Connecting
-        }
-        OutlinedButton(
-            onClick = { viewModel.disconnectAll() },
-            enabled = anyActiveSession,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("断开所有会话")
-        }
     }
 }
 
@@ -107,6 +95,9 @@ private fun SessionCard(
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                         Text("连接中...", style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = onRetry) {
+                            Text("重试")
+                        }
                     }
                 }
                 SessionStatus.Ready -> {

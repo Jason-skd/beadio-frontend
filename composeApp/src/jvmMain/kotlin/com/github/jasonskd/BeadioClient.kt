@@ -99,6 +99,8 @@ object BeadioClient {
     suspend fun getInvestigation(): ApiResponse =
         http.get("$BASE/investigation").body()
 
+    suspend fun deleteInvestigation() { http.delete("$BASE/investigation") }
+
     // Execution
     suspend fun createExecution(planName: String): ApiResponse =
         http.post("$BASE/execution") {
@@ -108,4 +110,6 @@ object BeadioClient {
 
     suspend fun getExecution(): ApiResponse =
         http.get("$BASE/execution").body()
+
+    suspend fun deleteExecution() { http.delete("$BASE/execution") }
 }

@@ -27,6 +27,7 @@ import com.github.jasonskd.ui.screens.ExecutePlanScreen
 import com.github.jasonskd.ui.screens.LinkSessionScreen
 import com.github.jasonskd.ui.screens.SettingsScreen
 import com.github.jasonskd.ui.theme.BeadioTheme
+import com.github.jasonskd.ui.viewmodels.ExecutePlanViewModel
 import com.github.jasonskd.ui.viewmodels.LinkSessionViewModel
 
 sealed class AppDestination {
@@ -40,18 +41,22 @@ sealed class AppDestination {
 fun App() {
     BeadioTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
+            val executePlanVm = viewModel { ExecutePlanViewModel() }
             val linkVm = viewModel { LinkSessionViewModel() }
             val linkSessionState by linkVm.uiState.collectAsStateWithLifecycle()
             var selected by remember { mutableStateOf<AppDestination>(AppDestination.ExecutePlan) }
             var sessionsLocked by remember { mutableStateOf(false) }
+            var previousDestination by remember { mutableStateOf<AppDestination>(AppDestination.ExecutePlan) }
 
             LaunchedEffect(linkSessionState.allSessionsReady) {
                 if (linkSessionState.allSessionsReady && sessionsLocked) {
                     sessionsLocked = false
+                    selected = previousDestination
                 }
             }
 
             val onSessionsNotReady: (List<String>) -> Unit = { sites ->
+                previousDestination = selected
                 sessionsLocked = true
                 selected = AppDestination.LinkSession
                 linkVm.startSessionsFor(sites)
@@ -103,7 +108,7 @@ fun App() {
 
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                     when (selected) {
-                        AppDestination.ExecutePlan -> ExecutePlanScreen(onSessionsNotReady = onSessionsNotReady)
+                        AppDestination.ExecutePlan -> ExecutePlanScreen(onSessionsNotReady = onSessionsNotReady, vm = executePlanVm)
                         AppDestination.CreatePlan -> CreatePlanScreen(onSessionsNotReady = onSessionsNotReady)
                         AppDestination.LinkSession -> LinkSessionScreen(viewModel = linkVm)
                         AppDestination.Settings -> SettingsScreen()
