@@ -34,6 +34,9 @@ private data class FetchVideosRequest(val selection: Map<String, List<Int>>)
 @Serializable
 private data class PlanNameRequest(val planName: String)
 
+@Serializable
+private data class UpdateConfigRequest(val browserChannel: String)
+
 object BeadioClient {
     val json = Json { ignoreUnknownKeys = true }
 
@@ -112,4 +115,14 @@ object BeadioClient {
         http.get("$BASE/execution").body()
 
     suspend fun deleteExecution() { http.delete("$BASE/execution") }
+
+    // Config
+    suspend fun configExists(): Boolean = http.get("$BASE/config/exists").body()
+    suspend fun getAvailableBrowsers(): List<String> = http.get("$BASE/config/browsers").body()
+    suspend fun getConfig(): ApiResponse = http.get("$BASE/config").body()
+    suspend fun updateConfig(browserChannel: String): ApiResponse =
+        http.put("$BASE/config") {
+            header(HttpHeaders.ContentType, ContentType.Application.Json)
+            setBody(UpdateConfigRequest(browserChannel))
+        }.body()
 }

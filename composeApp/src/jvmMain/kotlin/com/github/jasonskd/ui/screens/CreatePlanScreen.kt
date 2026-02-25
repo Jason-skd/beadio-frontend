@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -37,6 +38,7 @@ import com.github.jasonskd.ui.viewmodels.CreatePlanViewModel
 @Composable
 fun CreatePlanScreen(
     onSessionsNotReady: (List<String>) -> Unit,
+    onNavigateToExecute: () -> Unit,
     vm: CreatePlanViewModel = viewModel { CreatePlanViewModel() }
 ) {
     val uiState by vm.uiState.collectAsStateWithLifecycle()
@@ -74,7 +76,11 @@ fun CreatePlanScreen(
                             style = MaterialTheme.typography.titleLarge
                         )
                         Spacer(modifier = Modifier.height(24.dp))
-                        Button(onClick = { vm.reset() }) {
+                        Button(onClick = onNavigateToExecute) {
+                            Text("去执行")
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(onClick = { vm.reset() }) {
                             Text("再创建一个")
                         }
                     }

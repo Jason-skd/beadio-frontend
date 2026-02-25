@@ -48,14 +48,95 @@ class ExecutePlanViewModel : ViewModel() {
     private var executionJob: Job? = null
 
     init {
-        loadPlans()
+        probeAndLoad()
     }
 
-    private fun loadPlans() {
+    // Starts (or restarts) the investigation + execution polling loops.
+    // Uses save-then-cancel so it can safely be called from inside executionJob.
+    private fun resumePolling(skipInvestigation: Boolean) {
+        val oldJob = executionJob
+        executionJob = viewModelScope.launch {
+            val invJob: Job? = if (!skipInvestigation) launch {
+                while (isActive) {
+                    delay(1500)
+                    val resp = BeadioClient.getInvestigation()
+                    _uiState.update { s ->
+                        val p = s.phase as? ExecutePhase.Executing ?: return@update s
+                        when (resp.type) {
+                            "Ready", "Failed" -> s.copy(phase = p.copy(investigationDone = true, investigationMessage = resp.message ?: ""))
+                            else -> s.copy(phase = p.copy(investigationMessage = resp.message ?: p.investigationMessage))
+                        }
+                    }
+                    if (resp.type == "Ready" || resp.type == "Failed") return@launch
+                }
+            } else null
+
+            while (isActive) {
+                delay(1500)
+                val resp = BeadioClient.getExecution()
+                when (resp.type) {
+                    "Ready" -> {
+                        invJob?.cancel()
+                        _uiState.update { it.copy(phase = ExecutePhase.Done(resp.message ?: "")) }
+                        return@launch
+                    }
+                    "Failed" -> {
+                        invJob?.cancel()
+                        _uiState.update { it.copy(phase = ExecutePhase.Error(resp.message ?: "")) }
+                        return@launch
+                    }
+                    else -> {
+                        val progress = resp.data?.let {
+                            BeadioClient.json.decodeFromJsonElement<ExecutionProgressData>(it)
+                        }
+                        _uiState.update { s ->
+                            val p = s.phase as? ExecutePhase.Executing ?: return@update s
+                            s.copy(phase = p.copy(
+                                executionProgress = progress ?: p.executionProgress,
+                                executionMessage = resp.message ?: p.executionMessage
+                            ))
+                        }
+                    }
+                }
+            }
+        }
+        oldJob?.cancel()
+    }
+
+    // Loads plans and probes backend execution/investigation state to determine the correct phase.
+    private fun probeAndLoad() {
         viewModelScope.launch {
+            _uiState.update { it.copy(phase = ExecutePhase.LoadingPlans) }
             try {
                 val plans = BeadioClient.getPlans()
-                _uiState.update { it.copy(plans = plans, phase = ExecutePhase.Idle) }
+                _uiState.update { it.copy(plans = plans) }
+
+                val execResp = BeadioClient.getExecution()
+                val execInProgress = execResp.exceptionType == null && execResp.type == "Processing"
+                val execDone = execResp.exceptionType == null && execResp.type == "Ready"
+                val execFailed = execResp.exceptionType == null && execResp.type == "Failed"
+
+                when {
+                    execInProgress -> {
+                        val invResp = BeadioClient.getInvestigation()
+                        val invInProgress = invResp.exceptionType == null && invResp.type == "Processing"
+                        val progress = execResp.data?.let {
+                            BeadioClient.json.decodeFromJsonElement<ExecutionProgressData>(it)
+                        }
+                        _uiState.update {
+                            it.copy(phase = ExecutePhase.Executing(
+                                investigationDone = !invInProgress,
+                                investigationMessage = invResp.message ?: "",
+                                executionProgress = progress,
+                                executionMessage = execResp.message ?: ""
+                            ))
+                        }
+                        resumePolling(skipInvestigation = !invInProgress)
+                    }
+                    execDone -> _uiState.update { it.copy(phase = ExecutePhase.Done(execResp.message ?: "")) }
+                    execFailed -> _uiState.update { it.copy(phase = ExecutePhase.Error(execResp.message ?: "")) }
+                    else -> _uiState.update { it.copy(phase = ExecutePhase.Idle) }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -88,8 +169,17 @@ class ExecutePlanViewModel : ViewModel() {
     }
 
     fun refreshPlans() {
-        _uiState.update { it.copy(phase = ExecutePhase.LoadingPlans) }
-        loadPlans()
+        if (_uiState.value.isExecuting) {
+            // Execution in progress: only refresh the plan list, preserve phase
+            viewModelScope.launch {
+                try {
+                    val plans = BeadioClient.getPlans()
+                    _uiState.update { it.copy(plans = plans) }
+                } catch (_: Exception) {}
+            }
+            return
+        }
+        probeAndLoad()
     }
 
     fun startExecution() {
@@ -147,54 +237,8 @@ class ExecutePlanViewModel : ViewModel() {
                     )
                 }
 
-                // Phase 3: Investigation polling — child coroutine (auto-cancelled with parent)
-                val invJob: Job? = if (!skipInvestigation) launch {
-                    while (isActive) {
-                        delay(1500)
-                        val resp = BeadioClient.getInvestigation()
-                        _uiState.update { s ->
-                            val p = s.phase as? ExecutePhase.Executing ?: return@update s
-                            when (resp.type) {
-                                "Ready" -> s.copy(phase = p.copy(investigationDone = true, investigationMessage = resp.message ?: ""))
-                                "Failed" -> s.copy(phase = p.copy(investigationDone = true, investigationMessage = resp.message ?: ""))
-                                else -> s.copy(phase = p.copy(investigationMessage = resp.message ?: p.investigationMessage))
-                            }
-                        }
-                        if (resp.type == "Ready" || resp.type == "Failed") return@launch
-                    }
-                } else null
-
-                // Phase 4: Execution polling — main coroutine loop
-                while (isActive) {
-                    delay(1500)
-                    val resp = BeadioClient.getExecution()
-                    when (resp.type) {
-                        "Ready" -> {
-                            invJob?.cancel()
-                            _uiState.update { it.copy(phase = ExecutePhase.Done(resp.message ?: "")) }
-                            return@launch
-                        }
-                        "Failed" -> {
-                            invJob?.cancel()
-                            _uiState.update { it.copy(phase = ExecutePhase.Error(resp.message ?: "")) }
-                            return@launch
-                        }
-                        else -> {
-                            val progress = resp.data?.let {
-                                BeadioClient.json.decodeFromJsonElement<ExecutionProgressData>(it)
-                            }
-                            _uiState.update { s ->
-                                val p = s.phase as? ExecutePhase.Executing ?: return@update s
-                                s.copy(
-                                    phase = p.copy(
-                                        executionProgress = progress ?: p.executionProgress,
-                                        executionMessage = resp.message ?: p.executionMessage
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
+                // Phase 3 & 4: hand off to resumePolling (cancels this coroutine via oldJob.cancel())
+                resumePolling(skipInvestigation)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

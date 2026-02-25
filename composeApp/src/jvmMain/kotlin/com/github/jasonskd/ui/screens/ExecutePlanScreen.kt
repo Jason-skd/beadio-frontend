@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -31,7 +32,10 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -59,13 +63,15 @@ fun ExecutePlanScreen(
         vm.sessionNotReadyEvent.collect { currentCallback(it) }
     }
 
+    var planToDelete by remember { mutableStateOf<String?>(null) }
+
     Row(modifier = Modifier.fillMaxSize()) {
         PlanListPanel(
             plans = uiState.plans,
             selectedPlan = uiState.selectedPlan,
             isExecuting = uiState.isExecuting,
             onSelectPlan = { vm.selectPlan(it) },
-            onDeletePlan = { vm.deletePlan(it) },
+            onDeletePlan = { planToDelete = it },
             onRefresh = { vm.refreshPlans() },
             modifier = Modifier.width(220.dp).fillMaxHeight()
         )
@@ -152,6 +158,23 @@ fun ExecutePlanScreen(
                 }
             }
         }
+    }
+
+    planToDelete?.let { name ->
+        AlertDialog(
+            onDismissRequest = { planToDelete = null },
+            title = { Text("删除计划") },
+            text = { Text("确定要删除计划 \"$name\" 吗？此操作不可撤销。") },
+            confirmButton = {
+                TextButton(
+                    onClick = { vm.deletePlan(name); planToDelete = null },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("删除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { planToDelete = null }) { Text("取消") }
+            }
+        )
     }
 }
 
