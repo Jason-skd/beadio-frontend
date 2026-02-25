@@ -36,7 +36,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import api.ProgressPair
 import api.VideoProgressData
 import com.github.jasonskd.ui.viewmodels.ExecutePhase
@@ -51,7 +50,7 @@ private val VideoProgressData.fraction: Float
 @Composable
 fun ExecutePlanScreen(
     onSessionsNotReady: (List<String>) -> Unit,
-    vm: ExecutePlanViewModel = viewModel { ExecutePlanViewModel() }
+    vm: ExecutePlanViewModel
 ) {
     val uiState by vm.uiState.collectAsStateWithLifecycle()
     val currentCallback by rememberUpdatedState(onSessionsNotReady)
@@ -64,6 +63,7 @@ fun ExecutePlanScreen(
         PlanListPanel(
             plans = uiState.plans,
             selectedPlan = uiState.selectedPlan,
+            isExecuting = uiState.isExecuting,
             onSelectPlan = { vm.selectPlan(it) },
             onDeletePlan = { vm.deletePlan(it) },
             onRefresh = { vm.refreshPlans() },
@@ -159,6 +159,7 @@ fun ExecutePlanScreen(
 private fun PlanListPanel(
     plans: List<String>,
     selectedPlan: String?,
+    isExecuting: Boolean,
     onSelectPlan: (String) -> Unit,
     onDeletePlan: (String) -> Unit,
     onRefresh: () -> Unit,
@@ -181,7 +182,7 @@ private fun PlanListPanel(
                             if (isSelected) MaterialTheme.colorScheme.secondaryContainer
                             else MaterialTheme.colorScheme.surface
                         )
-                        .clickable { onSelectPlan(plan) }
+                        .clickable(enabled = !isExecuting) { onSelectPlan(plan) }
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -190,17 +191,22 @@ private fun PlanListPanel(
                         text = plan,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f),
-                        color = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer
-                                else MaterialTheme.colorScheme.onSurface
+                        color = when {
+                            isSelected -> MaterialTheme.colorScheme.onSecondaryContainer
+                            isExecuting -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
                     )
                     IconButton(
                         onClick = { onDeletePlan(plan) },
+                        enabled = !isExecuting,
                         modifier = Modifier.size(32.dp)
                     ) {
                         Text(
                             "✕",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
+                            color = if (isExecuting) MaterialTheme.colorScheme.error.copy(alpha = 0.38f)
+                                    else MaterialTheme.colorScheme.error
                         )
                     }
                 }
