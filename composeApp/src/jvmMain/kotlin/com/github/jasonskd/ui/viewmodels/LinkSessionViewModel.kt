@@ -2,7 +2,9 @@ package com.github.jasonskd.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.jasonskd.BeadioClient
 import domain.SupportedSite
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,13 +39,36 @@ class LinkSessionViewModel : ViewModel() {
         viewModelScope.launch {
             updateSiteStatus(site, SessionStatus.Connecting, "连接中...")
             try {
-                // stub: POST /sessions/{site.name} + poll
-                delay(1500)
-                delay(1000)
-                updateSiteStatus(site, SessionStatus.Ready, "已就绪")
-                checkAllReady()
+                val resp = BeadioClient.createSession(site.name)
+                when (resp.exceptionType) {
+                    null -> updateSiteStatus(site, SessionStatus.Connecting, resp.message ?: "连接中...")
+                    "SESSION_ALREADY_EXISTS" -> updateSiteStatus(site, SessionStatus.Connecting, resp.message ?: "连接中...")
+                    else -> {
+                        updateSiteStatus(site, SessionStatus.Failed, resp.message ?: "连接失败")
+                        return@launch
+                    }
+                }
+                // Poll until Ready or Failed
+                while (true) {
+                    delay(1500)
+                    val poll = BeadioClient.getSession(site.name)
+                    when (poll.type) {
+                        "Ready" -> {
+                            updateSiteStatus(site, SessionStatus.Ready, poll.message ?: "已就绪")
+                            checkAllReady()
+                            return@launch
+                        }
+                        "Failed" -> {
+                            updateSiteStatus(site, SessionStatus.Failed, poll.message ?: "连接失败")
+                            return@launch
+                        }
+                        else -> updateSiteStatus(site, SessionStatus.Connecting, poll.message ?: "连接中...")
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                updateSiteStatus(site, SessionStatus.Failed, "连接失败")
+                updateSiteStatus(site, SessionStatus.Failed, e.message ?: "连接失败")
             }
         }
     }
@@ -54,8 +79,11 @@ class LinkSessionViewModel : ViewModel() {
 
     fun disconnectAll() {
         viewModelScope.launch {
-            // stub: DELETE /sessions
-            delay(500)
+            try {
+                BeadioClient.deleteSessions()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) { /* ignore errors on disconnect */ }
             _uiState.update { state ->
                 state.copy(
                     sessions = state.sessions.map {

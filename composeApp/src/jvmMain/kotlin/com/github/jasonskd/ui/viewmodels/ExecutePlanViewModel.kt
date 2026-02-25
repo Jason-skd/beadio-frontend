@@ -3,17 +3,18 @@ package com.github.jasonskd.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import api.ExecutionProgressData
-import api.ProgressPair
-import api.SiteProgressData
-import api.VideoProgressData
-import domain.SupportedSite
+import com.github.jasonskd.BeadioClient
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.decodeFromJsonElement
 
 sealed class ExecutePhase {
     object Idle : ExecutePhase()
@@ -41,19 +42,21 @@ class ExecutePlanViewModel : ViewModel() {
 
     val sessionNotReadyEvent = MutableSharedFlow<List<String>>()
 
+    private var executionJob: Job? = null
+
     init {
         loadPlans()
     }
 
     private fun loadPlans() {
         viewModelScope.launch {
-            // stub: GET /plans
-            delay(500)
-            _uiState.update {
-                it.copy(
-                    plans = listOf("我的计划", "砺儒课程计划"),
-                    phase = ExecutePhase.Idle
-                )
+            try {
+                val plans = BeadioClient.getPlans()
+                _uiState.update { it.copy(plans = plans, phase = ExecutePhase.Idle) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                _uiState.update { it.copy(plans = emptyList(), phase = ExecutePhase.Idle) }
             }
         }
     }
@@ -64,8 +67,11 @@ class ExecutePlanViewModel : ViewModel() {
 
     fun deletePlan(planName: String) {
         viewModelScope.launch {
-            // stub: DELETE /plans
-            delay(300)
+            try {
+                BeadioClient.deletePlan(planName)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) { /* ignore errors on delete */ }
             _uiState.update { state ->
                 val newPlans = state.plans.filter { it != planName }
                 state.copy(
@@ -83,82 +89,124 @@ class ExecutePlanViewModel : ViewModel() {
 
     fun startExecution() {
         val planName = _uiState.value.selectedPlan ?: return
-        viewModelScope.launch {
-            // Step 1: Start Investigation
-            _uiState.update { it.copy(phase = ExecutePhase.Investigating("正在收集视频元数据...")) }
-            // stub: POST /investigation
-            delay(1000)
-
-            // stub: POST /execution
-            _uiState.update {
-                it.copy(
-                    phase = ExecutePhase.Executing(
-                        investigationDone = false,
-                        investigationMessage = "正在调查视频...",
-                        executionProgress = null,
-                        executionMessage = "正在启动执行..."
-                    )
-                )
-            }
-
-            // stub: simulate concurrent polling
-            var investigationRound = 0
-            var executionRound = 0
-            while (true) {
-                delay(800)
-                investigationRound++
-                executionRound++
-
-                val investigationDone = investigationRound >= 4
-                val executionDone = executionRound >= 6
-
-                val watched = (executionRound * 200).coerceAtMost(1200)
-                val duration = 1200
-                val videoWatched = (executionRound * 50).coerceAtMost(300)
-                val videoDuration = 300
-
-                val mockProgress = if (executionRound >= 2) {
-                    ExecutionProgressData(
-                        planProgress = ProgressPair(watched, duration),
-                        sites = mapOf(
-                            SupportedSite.Liru to SiteProgressData(
-                                siteProgress = ProgressPair(watched, duration),
-                                currentVideo = if (!executionDone) VideoProgressData(
-                                    name = "第${executionRound}节 示例视频",
-                                    watched = videoWatched,
-                                    duration = videoDuration
-                                ) else null
-                            )
-                        )
-                    )
-                } else null
-
-                if (executionDone) {
-                    _uiState.update {
-                        it.copy(phase = ExecutePhase.Done("执行完成！计划 \"$planName\" 已全部播放完毕。"))
+        executionJob?.cancel()
+        executionJob = viewModelScope.launch {
+            try {
+                // Phase 1: POST /investigation
+                _uiState.update { it.copy(phase = ExecutePhase.Investigating("正在启动调查...")) }
+                var skipInvestigation = false
+                val invResp = BeadioClient.createInvestigation(planName)
+                when (invResp.exceptionType) {
+                    null -> _uiState.update { it.copy(phase = ExecutePhase.Investigating(invResp.message ?: "正在启动调查...")) }
+                    "ALL_VIDEOS_COLLECTED" -> { skipInvestigation = true }
+                    "SESSIONS_NOT_READY" -> {
+                        val notReadySites = invResp.data?.let {
+                            BeadioClient.json.decodeFromJsonElement<List<String>>(it)
+                        } ?: emptyList()
+                        _uiState.update { it.copy(phase = ExecutePhase.Idle) }
+                        sessionNotReadyEvent.emit(notReadySites)
+                        return@launch
                     }
-                    break
+                    else -> {
+                        _uiState.update { it.copy(phase = ExecutePhase.Error(invResp.message ?: "")) }
+                        return@launch
+                    }
+                }
+
+                // Phase 2: POST /execution
+                val execResp = BeadioClient.createExecution(planName)
+                when (execResp.exceptionType) {
+                    null -> { /* started */ }
+                    "SESSIONS_NOT_READY" -> {
+                        val notReadySites = execResp.data?.let {
+                            BeadioClient.json.decodeFromJsonElement<List<String>>(it)
+                        } ?: emptyList()
+                        _uiState.update { it.copy(phase = ExecutePhase.Idle) }
+                        sessionNotReadyEvent.emit(notReadySites)
+                        return@launch
+                    }
+                    else -> {
+                        _uiState.update { it.copy(phase = ExecutePhase.Error(execResp.message ?: "")) }
+                        return@launch
+                    }
                 }
 
                 _uiState.update {
                     it.copy(
                         phase = ExecutePhase.Executing(
-                            investigationDone = investigationDone,
-                            investigationMessage = if (investigationDone) "调查完成" else "正在调查第 $investigationRound 个视频...",
-                            executionProgress = mockProgress,
-                            executionMessage = "正在执行第 $executionRound 轮..."
+                            investigationDone = skipInvestigation,
+                            investigationMessage = invResp.message ?: "",
+                            executionProgress = null,
+                            executionMessage = execResp.message ?: ""
                         )
                     )
                 }
+
+                // Phase 3: Investigation polling — child coroutine (auto-cancelled with parent)
+                val invJob: Job? = if (!skipInvestigation) launch {
+                    while (isActive) {
+                        delay(1500)
+                        val resp = BeadioClient.getInvestigation()
+                        _uiState.update { s ->
+                            val p = s.phase as? ExecutePhase.Executing ?: return@update s
+                            when (resp.type) {
+                                "Ready" -> s.copy(phase = p.copy(investigationDone = true, investigationMessage = resp.message ?: ""))
+                                "Failed" -> s.copy(phase = p.copy(investigationDone = true, investigationMessage = resp.message ?: ""))
+                                else -> s.copy(phase = p.copy(investigationMessage = resp.message ?: p.investigationMessage))
+                            }
+                        }
+                        if (resp.type == "Ready" || resp.type == "Failed") return@launch
+                    }
+                } else null
+
+                // Phase 4: Execution polling — main coroutine loop
+                while (isActive) {
+                    delay(1500)
+                    val resp = BeadioClient.getExecution()
+                    when (resp.type) {
+                        "Ready" -> {
+                            invJob?.cancel()
+                            _uiState.update { it.copy(phase = ExecutePhase.Done(resp.message ?: "")) }
+                            return@launch
+                        }
+                        "Failed" -> {
+                            invJob?.cancel()
+                            _uiState.update { it.copy(phase = ExecutePhase.Error(resp.message ?: "")) }
+                            return@launch
+                        }
+                        else -> {
+                            val progress = resp.data?.let {
+                                BeadioClient.json.decodeFromJsonElement<ExecutionProgressData>(it)
+                            }
+                            _uiState.update { s ->
+                                val p = s.phase as? ExecutePhase.Executing ?: return@update s
+                                s.copy(
+                                    phase = p.copy(
+                                        executionProgress = progress ?: p.executionProgress,
+                                        executionMessage = resp.message ?: p.executionMessage
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(phase = ExecutePhase.Error(e.message ?: "网络错误")) }
             }
         }
     }
 
     fun cancelExecution() {
+        executionJob?.cancel()
+        executionJob = null
         _uiState.update { it.copy(phase = ExecutePhase.Idle) }
     }
 
     fun reset() {
+        executionJob?.cancel()
+        executionJob = null
         _uiState.update { it.copy(phase = ExecutePhase.Idle, selectedPlan = null) }
     }
 }

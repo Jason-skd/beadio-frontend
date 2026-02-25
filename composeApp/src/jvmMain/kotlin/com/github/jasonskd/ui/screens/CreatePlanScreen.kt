@@ -132,7 +132,7 @@ fun CreatePlanScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator()
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text("正在获取课程列表...", style = MaterialTheme.typography.bodyMedium)
+                            Text(uiState.loadingMessage.ifEmpty { "正在获取课程列表..." }, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
@@ -185,7 +185,7 @@ fun CreatePlanScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator()
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text("正在获取视频列表...", style = MaterialTheme.typography.bodyMedium)
+                            Text(uiState.loadingMessage.ifEmpty { "正在获取视频列表..." }, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
@@ -219,7 +219,7 @@ fun CreatePlanScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator()
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text("正在保存...", style = MaterialTheme.typography.bodyMedium)
+                            Text(uiState.loadingMessage.ifEmpty { "正在保存..." }, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }

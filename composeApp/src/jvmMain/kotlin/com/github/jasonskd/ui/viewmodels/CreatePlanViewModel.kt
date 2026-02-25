@@ -2,8 +2,10 @@ package com.github.jasonskd.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.jasonskd.BeadioClient
 import domain.Course
 import domain.SupportedSite
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,10 +13,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.decodeFromJsonElement
 
 data class CreatePlanUiState(
     val step: Int = 1,
     val isLoading: Boolean = false,
+    val loadingMessage: String = "",
     val errorMessage: String? = null,
     val availableSites: List<SupportedSite> = SupportedSite.entries(),
     val selectedSites: Set<SupportedSite> = emptySet(),
@@ -45,17 +49,61 @@ class CreatePlanViewModel : ViewModel() {
         val sites = _uiState.value.selectedSites.toList()
         if (sites.isEmpty()) return
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            // stub: POST /plans/new + POST /plans/new/courses + poll
-            delay(2000)
-            val mockCourses = sites.associateWith { site ->
-                listOf(
-                    Course(name = "${site.displayName} 课程一", url = "https://example.com/1"),
-                    Course(name = "${site.displayName} 课程二", url = "https://example.com/2"),
-                    Course(name = "${site.displayName} 课程三", url = "https://example.com/3")
-                )
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            try {
+                // Step 1: POST /plans/new
+                val createResp = BeadioClient.createPlanManager(sites.map { it.name })
+                when (createResp.exceptionType) {
+                    null -> _uiState.update { it.copy(loadingMessage = createResp.message ?: "") }
+                    "MANAGER_ALREADY_EXISTS" -> _uiState.update { it.copy(loadingMessage = createResp.message ?: "") }
+                    "SESSIONS_NOT_READY" -> {
+                        val notReadySites = createResp.data?.let {
+                            BeadioClient.json.decodeFromJsonElement<List<String>>(it)
+                        } ?: sites.map { it.name }
+                        _uiState.update { it.copy(isLoading = false) }
+                        sessionNotReadyEvent.emit(notReadySites)
+                        return@launch
+                    }
+                    else -> {
+                        _uiState.update { it.copy(isLoading = false, errorMessage = createResp.message) }
+                        return@launch
+                    }
+                }
+
+                // Step 2: POST /plans/new/courses
+                val coursesResp = BeadioClient.startCourseCollection()
+                if (coursesResp.exceptionType != null) {
+                    _uiState.update { it.copy(isLoading = false, errorMessage = coursesResp.message) }
+                    return@launch
+                }
+                _uiState.update { it.copy(loadingMessage = coursesResp.message ?: "") }
+
+                // Step 3: Poll until AwaitingCourseSelection (type == "Ready")
+                while (true) {
+                    delay(1500)
+                    val pollResp = BeadioClient.getPlanCreationState()
+                    when {
+                        pollResp.type == "Ready" && pollResp.data != null -> {
+                            val raw = BeadioClient.json.decodeFromJsonElement<Map<String, List<Course>>>(pollResp.data)
+                            val coursesBySite = raw.entries.mapNotNull { (key, value) ->
+                                SupportedSite.fromName(key)?.let { site -> site to value }
+                            }.toMap()
+                            _uiState.update { it.copy(isLoading = false, step = 2, coursesBySite = coursesBySite) }
+                            return@launch
+                        }
+                        pollResp.exceptionType != null || pollResp.type == "Failed" -> {
+                            _uiState.update { it.copy(isLoading = false, errorMessage = pollResp.message) }
+                            return@launch
+                        }
+                        else -> _uiState.update { it.copy(loadingMessage = pollResp.message ?: "") }
+                        // Processing → keep polling
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, errorMessage = e.message ?: "网络错误") }
             }
-            _uiState.update { it.copy(isLoading = false, step = 2, coursesBySite = mockCourses) }
         }
     }
 
@@ -69,10 +117,42 @@ class CreatePlanViewModel : ViewModel() {
 
     fun fetchVideos() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            // stub: POST /plans/new/videos + poll
-            delay(2000)
-            _uiState.update { it.copy(isLoading = false, step = 3) }
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            try {
+                val selection = _uiState.value.selectedCourseIndices
+                    .mapKeys { (site, _) -> site.name }
+                    .mapValues { (_, indices) -> indices.toList() }
+
+                // Step 1: POST /plans/new/videos
+                val fetchResp = BeadioClient.fetchVideos(selection)
+                if (fetchResp.exceptionType != null) {
+                    _uiState.update { it.copy(isLoading = false, errorMessage = fetchResp.message) }
+                    return@launch
+                }
+                _uiState.update { it.copy(loadingMessage = fetchResp.message ?: "") }
+
+                // Step 2: Poll until AwaitingPlanSave (Processing + message == "等待保存计划")
+                while (true) {
+                    delay(1500)
+                    val pollResp = BeadioClient.getPlanCreationState()
+                    when {
+                        pollResp.type == "Processing" && pollResp.message == "等待保存计划" -> {
+                            _uiState.update { it.copy(isLoading = false, step = 3) }
+                            return@launch
+                        }
+                        pollResp.exceptionType != null || pollResp.type == "Failed" -> {
+                            _uiState.update { it.copy(isLoading = false, errorMessage = pollResp.message) }
+                            return@launch
+                        }
+                        else -> _uiState.update { it.copy(loadingMessage = pollResp.message ?: "") }
+                        // Still fetching videos → keep polling
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, errorMessage = e.message ?: "网络错误") }
+            }
         }
     }
 
@@ -84,10 +164,19 @@ class CreatePlanViewModel : ViewModel() {
         val name = _uiState.value.planName
         if (name.isBlank()) return
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            // stub: PUT /plans/new
-            delay(1000)
-            _uiState.update { it.copy(isLoading = false, savedPlanName = name) }
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            try {
+                val resp = BeadioClient.savePlan(name)
+                if (resp.exceptionType == null) {
+                    _uiState.update { it.copy(isLoading = false, savedPlanName = name) }
+                } else {
+                    _uiState.update { it.copy(isLoading = false, errorMessage = resp.message) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, errorMessage = e.message ?: "网络错误") }
+            }
         }
     }
 
