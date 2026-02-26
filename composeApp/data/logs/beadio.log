@@ -1,0 +1,29 @@
+2026-02-26 20:30:04.344 [backend-server] INFO  Application - Autoreload is disabled because the development mode is off.
+2026-02-26 20:30:04.418 [backend-server] INFO  [Koin] - Started 11 definitions in 0.68 ms
+2026-02-26 20:30:04.445 [backend-server] INFO  Application - Application started in 0.194 seconds.
+2026-02-26 20:30:04.576 [DefaultDispatcher-worker-1] INFO  Application - Responding at http://0.0.0.0:8080
+2026-02-26 20:30:04.797 [eventLoopGroupProxy-4-3] DEBUG api.routes.ExecutionRoutes - Execution manager not found
+2026-02-26 20:30:05.013 [eventLoopGroupProxy-4-6] DEBUG api.routes.ConfigRoutes - Config not found
+2026-02-26 20:30:50.150 [backend-server] INFO  Application - Autoreload is disabled because the development mode is off.
+2026-02-26 20:30:50.208 [backend-server] INFO  [Koin] - Started 11 definitions in 0.482 ms
+2026-02-26 20:30:50.225 [backend-server] INFO  Application - Application started in 0.141 seconds.
+2026-02-26 20:30:50.346 [DefaultDispatcher-worker-1] INFO  Application - Responding at http://0.0.0.0:8080
+2026-02-26 20:30:50.545 [eventLoopGroupProxy-4-3] DEBUG api.routes.ExecutionRoutes - Execution manager not found
+2026-02-26 20:30:50.553 [eventLoopGroupProxy-4-5] DEBUG api.routes.ConfigRoutes - Config not found
+2026-02-26 20:30:54.320 [eventLoopGroupProxy-4-7] INFO  api.routes.BreakRoutes - 收到关闭服务请求，开始释放资源...
+2026-02-26 20:30:54.321 [eventLoopGroupProxy-4-7] DEBUG api.routes.BreakRoutes - ExecuteManagerFactory 已关闭
+2026-02-26 20:30:54.321 [eventLoopGroupProxy-4-7] DEBUG api.routes.BreakRoutes - InvestigateManagerFactory 已关闭
+2026-02-26 20:30:54.321 [eventLoopGroupProxy-4-7] DEBUG api.routes.BreakRoutes - PlanCreationManagerFactory 已关闭
+2026-02-26 20:30:54.322 [eventLoopGroupProxy-4-7] INFO  service.session.SessionsManagerImpl - Closing all sessions (0 total)
+2026-02-26 20:30:54.322 [eventLoopGroupProxy-4-7] DEBUG api.routes.BreakRoutes - SessionsManager 已关闭
+2026-02-26 20:49:37.698 [backend-server] INFO  Application - Autoreload is disabled because the development mode is off.
+2026-02-26 20:49:37.755 [backend-server] INFO  [Koin] - Started 11 definitions in 1.113 ms
+2026-02-26 20:49:37.770 [backend-server] INFO  Application - Application started in 0.151 seconds.
+2026-02-26 20:49:37.870 [DefaultDispatcher-worker-1] INFO  Application - Responding at http://0.0.0.0:8080
+2026-02-26 20:49:38.255 [eventLoopGroupProxy-4-3] DEBUG api.routes.ExecutionRoutes - Execution manager not found
+2026-02-26 20:49:46.139 [eventLoopGroupProxy-4-4] INFO  api.routes.BreakRoutes - 收到关闭服务请求，开始释放资源...
+2026-02-26 20:49:46.140 [eventLoopGroupProxy-4-4] DEBUG api.routes.BreakRoutes - ExecuteManagerFactory 已关闭
+2026-02-26 20:49:46.140 [eventLoopGroupProxy-4-4] DEBUG api.routes.BreakRoutes - InvestigateManagerFactory 已关闭
+2026-02-26 20:49:46.141 [eventLoopGroupProxy-4-4] DEBUG api.routes.BreakRoutes - PlanCreationManagerFactory 已关闭
+2026-02-26 20:49:46.141 [eventLoopGroupProxy-4-4] INFO  service.session.SessionsManagerImpl - Closing all sessions (0 total)
+2026-02-26 20:49:46.141 [eventLoopGroupProxy-4-4] DEBUG api.routes.BreakRoutes - SessionsManager 已关闭

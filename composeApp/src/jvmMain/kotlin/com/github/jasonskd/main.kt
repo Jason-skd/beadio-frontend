@@ -15,6 +15,11 @@ import kotlinx.coroutines.withTimeout
 import kotlin.system.exitProcess
 
 fun main() {
+    Thread({
+        val engineMain = Class.forName("io.ktor.server.netty.EngineMain")
+        engineMain.getMethod("main", Array<String>::class.java).invoke(null, emptyArray<String>())
+    }, "backend-server").apply { isDaemon = true }.start()
+
     val shutdownScope = CoroutineScope(Dispatchers.IO)
 
     application {
