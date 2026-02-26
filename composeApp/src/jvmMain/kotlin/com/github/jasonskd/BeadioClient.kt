@@ -125,4 +125,7 @@ object BeadioClient {
             header(HttpHeaders.ContentType, ContentType.Application.Json)
             setBody(UpdateConfigRequest(browserChannel))
         }.body()
+
+    // Lifecycle
+    suspend fun breakBackend(): ApiResponse = http.post("$BASE/break").body()
 }
