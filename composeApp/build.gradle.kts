@@ -68,6 +68,8 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "com.github.jasonskd"
             packageVersion = "1.0.0"
+
+            modules("java.naming")
         }
     }
 }

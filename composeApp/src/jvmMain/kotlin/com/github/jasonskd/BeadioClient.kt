@@ -54,6 +54,9 @@ object BeadioClient {
     suspend fun getSession(siteName: String): ApiResponse =
         http.get("$BASE/sessions/$siteName").body()
 
+    suspend fun retrySession(siteName: String): ApiResponse =
+        http.post("$BASE/sessions/$siteName/retry").body()
+
     suspend fun deleteSessions() { http.delete("$BASE/sessions") }
 
     // Plan creation

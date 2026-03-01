@@ -12,12 +12,31 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import java.lang.reflect.InvocationTargetException
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.system.exitProcess
 
+val backendError = AtomicReference<Throwable?>(null)
+
 fun main() {
+    val isPackaged = System.getProperty("compose.application.resources.dir") != null
+    if (isPackaged) {
+        val appSupport = System.getProperty("user.home") + "/Library/Application Support/com.github.jasonskd"
+        java.io.File(appSupport).mkdirs()
+        System.setProperty("user.dir", appSupport)
+        System.setProperty("beadio.data.dir", appSupport)
+    }
+
     Thread({
-        val engineMain = Class.forName("io.ktor.server.netty.EngineMain")
-        engineMain.getMethod("main", Array<String>::class.java).invoke(null, emptyArray<String>())
+        try {
+            val engineMain = Class.forName("io.ktor.server.netty.EngineMain")
+            engineMain.getMethod("main", Array<String>::class.java).invoke(null, emptyArray<String>())
+        } catch (e: Throwable) {
+            val actual = if (e is InvocationTargetException) e.cause ?: e else e
+            backendError.set(actual)
+            System.err.println("Backend failed: ${actual.message}")
+            actual.printStackTrace(System.err)
+        }
     }, "backend-server").apply { isDaemon = true }.start()
 
     val shutdownScope = CoroutineScope(Dispatchers.IO)

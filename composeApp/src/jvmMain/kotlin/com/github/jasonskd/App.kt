@@ -54,6 +54,7 @@ fun App() {
             var sessionsLocked by remember { mutableStateOf(false) }
             var configLocked by remember { mutableStateOf(false) }
             var startupReady by remember { mutableStateOf(false) }
+            var startupError by remember { mutableStateOf<String?>(null) }
             var previousDestination by remember { mutableStateOf<AppDestination>(AppDestination.ExecutePlan) }
 
             LaunchedEffect(linkSessionState.allSessionsReady) {
@@ -64,7 +65,16 @@ fun App() {
             }
 
             LaunchedEffect(Unit) {
+                val deadline = System.currentTimeMillis() + 30_000L
                 while (true) {
+                    backendError.get()?.let { error ->
+                        startupError = "后端启动失败: ${error.message}"
+                        return@LaunchedEffect
+                    }
+                    if (System.currentTimeMillis() > deadline) {
+                        startupError = "后端启动超时"
+                        return@LaunchedEffect
+                    }
                     try {
                         val exists = BeadioClient.configExists()
                         if (!exists) {
@@ -102,7 +112,15 @@ fun App() {
 
             if (!startupReady) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+                    if (startupError != null) {
+                        Text(
+                            text = startupError!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    } else {
+                        CircularProgressIndicator()
+                    }
                 }
             } else {
                 Row(modifier = Modifier.fillMaxSize()) {

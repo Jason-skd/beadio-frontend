@@ -54,23 +54,7 @@ class LinkSessionViewModel : ViewModel() {
                         return@launch
                     }
                 }
-                // Poll until Ready or Failed
-                while (true) {
-                    delay(1500)
-                    val poll = BeadioClient.getSession(site.name)
-                    when (poll.type) {
-                        "Ready" -> {
-                            updateSiteStatus(site, SessionStatus.Ready, poll.message ?: "已就绪")
-                            checkAllReady()
-                            return@launch
-                        }
-                        "Failed" -> {
-                            updateSiteStatus(site, SessionStatus.Failed, poll.message ?: "连接失败")
-                            return@launch
-                        }
-                        else -> updateSiteStatus(site, SessionStatus.Connecting, poll.message ?: "连接中...")
-                    }
-                }
+                pollSession(site)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -80,7 +64,44 @@ class LinkSessionViewModel : ViewModel() {
     }
 
     fun retrySession(site: SupportedSite) {
-        connectSession(site)
+        siteJobs[site]?.cancel()
+        siteJobs[site] = viewModelScope.launch {
+            updateSiteStatus(site, SessionStatus.Connecting, "重试中...")
+            try {
+                val resp = BeadioClient.retrySession(site.name)
+                when (resp.exceptionType) {
+                    null -> updateSiteStatus(site, SessionStatus.Connecting, resp.message ?: "连接中...")
+                    else -> {
+                        updateSiteStatus(site, SessionStatus.Failed, resp.message ?: "重试失败")
+                        return@launch
+                    }
+                }
+                pollSession(site)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                updateSiteStatus(site, SessionStatus.Failed, e.message ?: "重试失败")
+            }
+        }
+    }
+
+    private suspend fun pollSession(site: SupportedSite) {
+        while (true) {
+            delay(1500)
+            val poll = BeadioClient.getSession(site.name)
+            when (poll.type) {
+                "Ready" -> {
+                    updateSiteStatus(site, SessionStatus.Ready, poll.message ?: "已就绪")
+                    checkAllReady()
+                    return
+                }
+                "Failed" -> {
+                    updateSiteStatus(site, SessionStatus.Failed, poll.message ?: "连接失败")
+                    return
+                }
+                else -> updateSiteStatus(site, SessionStatus.Connecting, poll.message ?: "连接中...")
+            }
+        }
     }
 
     fun disconnectAll() {
