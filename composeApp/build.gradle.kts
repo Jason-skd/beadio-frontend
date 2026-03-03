@@ -65,11 +65,11 @@ compose.desktop {
         mainClass = "com.github.jasonskd.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Exe)
             packageName = "com.github.jasonskd"
             packageVersion = "1.0.0"
 
-            modules("java.naming")
+            modules("java.naming", "jdk.zipfs")
         }
     }
 }
