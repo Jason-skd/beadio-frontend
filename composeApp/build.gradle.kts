@@ -8,7 +8,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-group = "com.github.jasonskd.beadio_frontend"
+group = "beadio"
 version = "0.0.1"
 
 kotlin {
@@ -62,14 +62,22 @@ kotlin {
 
 compose.desktop {
     application {
-        mainClass = "com.github.jasonskd.MainKt"
+        mainClass = "beadio.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Exe)
-            packageName = "com.github.jasonskd"
+            packageName = "Beadio"
             packageVersion = "1.0.0"
+            description = "Beadio Desktop Client"
+            vendor = "Beadio"
 
             modules("java.naming", "jdk.zipfs", "jdk.unsupported")
+
+            macOS {
+                bundleID = "io.bead.app"
+                dockName = "Beadio"
+                dmgPackageBuildVersion = "1.0.0"
+            }
         }
     }
 }
