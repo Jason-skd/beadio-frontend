@@ -69,7 +69,7 @@ compose.desktop {
             packageName = "com.github.jasonskd"
             packageVersion = "1.0.0"
 
-            modules("java.naming", "jdk.zipfs")
+            modules("java.naming", "jdk.zipfs", "jdk.unsupported")
         }
     }
 }
